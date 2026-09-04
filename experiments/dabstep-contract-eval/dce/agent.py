@@ -841,7 +841,19 @@ def reasoning_effort_for(model: str) -> str:
     effort at all. It could; the sentinel would have recorded a real control
     as absent. Kept as a function so the next route that genuinely cannot
     honour the setting has somewhere to say so.
+
+    THAT ROUTE HAS NOW ARRIVED, and this is what it says. `litellm_openai`
+    reaches a vLLM deployment whose reasoning knob is a BOOLEAN in the chat
+    template, not a graded effort — there is no "medium" on that scale to
+    translate `REASONING_EFFORT` into. Stamping `"medium"` anyway would record
+    a control that was never applied, which is the precise failure the sentinel
+    above was invented for and then wrongly used. So these rows stamp what was
+    actually sent, and any analysis grouping by `reasoning_effort` sees this
+    model as its own group rather than silently pooled with the graded five.
     """
+    spec = MODELS.get(model)
+    if spec is not None and spec.route == "litellm_openai":
+        return f"{'on' if QWEN_ENABLE_THINKING else 'off'}:enable_thinking"
     return REASONING_EFFORT
 
 
@@ -1073,6 +1085,139 @@ def _litellm_anthropic_agent(
     )
 
 
+#: Whether the `litellm_openai` route asks qwen to think.
+#:
+#: THIS IS A ROUTE CONTROL, NOT AN EFFORT LEVEL, and the distinction is the
+#: whole reason `reasoning_effort_for` stamps this route differently. The other
+#: five models take a graded effort ("medium"); qwen3.6 takes a BOOLEAN through
+#: vLLM's chat template, so there is no "medium" to translate `REASONING_EFFORT`
+#: into and inventing one would be exactly the quiet fiction `dce.pricing`'s
+#: docstring warns about.
+#:
+#: The gateway's own model config pins `enable_thinking: false`, so the DEFAULT
+#: for this model is thinking OFF -- measured 2026-09-04, three requests with no
+#: `chat_template_kwargs` returned 0 characters of reasoning, and three with
+#: this set to `false` did the same. Sending `true` overrides the gateway pin
+#: and the reasoning comes back in `reasoning_content` (450/327/329 characters
+#: over three requests, across all three replicas). An earlier note in this
+#: team's records said the gateway overrode request-level `enable_thinking`
+#: outright; that is no longer true, and it was re-measured rather than
+#: inherited.
+#:
+#: Set `True` so this model reasons like the other five rather than being the
+#: one arm-comparison run at a different cognitive setting. The known risk is
+#: qwen-specific and settled empirically by the smoke run, not by argument:
+#: Qwen3 has a documented failure mode where tool calls are dropped in thinking
+#: mode (QwenLM/Qwen3#1817). If the smoke run shows tool-call damage, flip this
+#: to `False`, and say so in FINDINGS rather than quietly rerunning.
+QWEN_ENABLE_THINKING: bool = True
+
+
+def _litellm_openai_agent(
+    *, model: str, system_prompt: str, tools: list, retries: int
+):
+    """Build the agent for a `route="litellm_openai"` model.
+
+    A THIRD ROUTE, AND THE ONE WITH THE FEWEST GUARANTEES. This is the same
+    enterprise LiteLLM gateway `_litellm_anthropic_agent` talks to, but its
+    OpenAI-compatible `/v1/chat/completions` route, serving a self-hosted vLLM
+    deployment. It is the same WIRE PROTOCOL as the OpenRouter path — hence
+    `OpenAIChatModel` — reached through a plain `OpenAIProvider` instead, which
+    is why it cannot reuse that factory: `OpenRouterProvider` hardcodes
+    OpenRouter's base URL, and the `provider.order` / `allow_fallbacks` pin in
+    that path's `extra_body` is OpenRouter vocabulary this gateway does not
+    understand and would ignore.
+
+    WHAT THAT COSTS US, STATED PLAINLY. The alias fans out across three vLLM
+    replicas running two different builds (see this model's `dce.pricing`
+    entry), and there is no endpoint pin available to stop it. The OpenRouter
+    path turns an unhonourable pin into an HTTP 404; here the equivalent event
+    is invisible except in `system_fingerprint`. This is a fidelity caveat on
+    this model's rows, uniform across arms — so it weakens reproducibility
+    rather than biasing the arm contrast, the same shape of caveat
+    `claudesonnet5` carries for its missing determinism controls.
+
+    THE CACHING QUESTION THE ANTHROPIC ROUTE HAD TO ANSWER DOES NOT ARISE.
+    That route exists because the gateway's OpenAI-compatible route injects no
+    `cache_control` and so bills every input token fresh at an ARM-DEPENDENT
+    multiple. Here that confound cannot occur: this model's input is metered at
+    $0.00/MTok and it has no cache tier at all, so there is no discount for a
+    route to forfeit and no arm for a forfeit to fall on unevenly. Every row's
+    `cached_tokens` is an honest 0.
+
+    Everything the arms share — `retries`, `max_tokens`, `timeout`, the token
+    guard, the tool-call cap — is held identical to both other routes, because
+    those are the controls that keep the arm comparison honest and they are not
+    route-specific.
+    """
+    from httpx2 import AsyncClient
+    from pydantic_ai import Agent
+    from pydantic_ai.models.openai import OpenAIChatModel
+    from pydantic_ai.providers.openai import OpenAIProvider
+    from pydantic_ai.settings import ModelSettings
+
+    base_url = os.environ["LITELLM_BASE_URL"]
+    api_key = os.environ["LITELLM_MASTER_KEY"]
+
+    return Agent(
+        OpenAIChatModel(
+            model,
+            provider=OpenAIProvider(
+                # The gateway speaks the OpenAI API under `/v1`; the Anthropic
+                # route's client appends its own path, which is why only this
+                # one carries the suffix.
+                base_url=f"{base_url.rstrip('/')}/v1",
+                api_key=api_key,
+                # Same CA story as the Anthropic route, same fix: the gateway
+                # is an internal host behind the corporate CA, which is not in
+                # certifi's store, and `SSL_CERT_FILE` is what makes httpx see
+                # it. Not disabling verification -- this request carries a live
+                # gateway key. See README.
+                http_client=AsyncClient(timeout=300),
+            ),
+        ),
+        system_prompt=system_prompt,
+        tools=tools,
+        # Identical to both other routes -- see the OpenRouter path's comment.
+        # A confound control, not a robustness knob, and it must not vary by
+        # route.
+        retries=retries,
+        model_settings=ModelSettings(
+            # Safe here for the same reason it is on the OpenRouter path:
+            # pydantic-ai's `SAMPLING_PARAMS` strip covers temperature and
+            # friends, not seed. And unlike `claudesonnet5` -- whose Bedrock
+            # backend rejects `seed` outright with HTTP 400 -- vLLM accepts it
+            # (verified live). This model keeps BOTH determinism controls.
+            seed=0,
+            timeout=300,
+            # The shared bound, unchanged. The gateway advertises
+            # `max_output_tokens: 32768` for this model while ACCEPTING a
+            # declared 64,000 (verified live, HTTP 200), and with a 262k
+            # context even the widest arm's ~46k-token request leaves room for
+            # it -- so keeping the shared value costs nothing and keeps this
+            # control uniform across all three routes, which is the point.
+            max_tokens=MAX_OUTPUT_TOKENS_PER_REQUEST,
+            extra_body={
+                # TEMPERATURE GOES HERE, NOT IN `ModelSettings`, for exactly
+                # the reason the OpenRouter path documents at length:
+                # pydantic-ai silently STRIPS `ModelSettings(temperature=...)`
+                # for any model whose profile has reasoning enabled, and with
+                # `QWEN_ENABLE_THINKING` true this model reasons. `extra_body`
+                # bypasses the strip. Verified live: `temperature: 0` returns
+                # HTTP 200 on this deployment.
+                "temperature": 0.0,
+                # The reasoning control. vLLM's chat template takes a boolean
+                # rather than an effort scale -- see `QWEN_ENABLE_THINKING`,
+                # which also records why this is sent explicitly instead of
+                # being left to the gateway's own pin.
+                "chat_template_kwargs": {
+                    "enable_thinking": QWEN_ENABLE_THINKING
+                },
+            },
+        ),
+    )
+
+
 def _default_agent_factory(
     *, model: str, system_prompt: str, tools: list, retries: int
 ):
@@ -1084,6 +1229,10 @@ def _default_agent_factory(
     spec = MODELS[model]
     if spec.route == "litellm_anthropic":
         return _litellm_anthropic_agent(
+            model=model, system_prompt=system_prompt, tools=tools, retries=retries
+        )
+    if spec.route == "litellm_openai":
+        return _litellm_openai_agent(
             model=model, system_prompt=system_prompt, tools=tools, retries=retries
         )
     return Agent(
