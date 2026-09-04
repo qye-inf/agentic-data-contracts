@@ -157,15 +157,34 @@ this model reasons like the other five. The known risk is qwen-specific and is
 settled by the smoke run rather than by argument: Qwen3 has a documented
 failure mode where tool calls are dropped in thinking mode (QwenLM/Qwen3#1817).
 
-**`reasoning_tokens` is 0 on every row of this model, and that is the
-provider's silence rather than ours.** vLLM returns no reasoning breakdown at
-all — measured on a request with thinking on that produced visible reasoning,
-the whole usage block was `{"completion_tokens": 400, "prompt_tokens": 23,
-"total_tokens": 423}`. The reasoning itself is not lost: it comes back in
-`reasoning_content`, which pydantic-ai maps to a `ThinkingPart`, so the traces
-carry it. What is lost is the cheap count — so the "wrong answers involve 4–10x
-more reasoning tokens than right ones" finding cannot be computed for this
-model from the results file alone.
+**`reasoning_tokens` is 0 on every row of this model, and `reasoning_chars`
+is why that is not the end of the story.** The non-streaming response carries
+`reasoning_content` in full but a usage block of exactly three integers, so
+there is no provider token count to read. Three other routes were tried and
+none help: `/v1/messages` returns no reasoning at all, `stream_options` is
+rejected outright without `stream=True` (*"Stream options can only be defined
+when `stream=True`"*), and the count appears **only** on the streaming usage
+chunk — verified, 471 characters of reasoning against
+`completion_tokens_details.reasoning_tokens: 173`.
+
+Switching this route to streaming to collect it was rejected, and not on
+style: the one documented qwen tool-call failure mode is specifically the vLLM
+**streaming** tool-call parser degrading under large generations, which is
+exactly the failure the non-streaming smoke run showed to be absent. Trading a
+descriptive column for a risk to the experiment itself is the wrong trade.
+
+So the harness measures the text instead. pydantic-ai maps `reasoning_content`
+onto a `ThinkingPart`, and every row now carries **`reasoning_chars`** — exact,
+free, and independent of whether the provider reports a token count. The
+measured conversion is **2.72 characters per reasoning token**
+(`QWEN_REASONING_CHARS_PER_TOKEN`), from the single request that reported both;
+enough to put a ratio on the right scale, not enough to quote a token count as
+exact. The "wrong answers involve 4–10x more reasoning tokens than right ones"
+finding is therefore computable for this model after all.
+
+For scale: one 41-turn smoke run produced 22,759 characters of reasoning —
+~8,400 tokens, roughly 57% of that run's 14,708 output tokens, all of it billed
+and all of it previously invisible.
 
 **Input is metered at $0.00/MTok** and there is no cache tier at all
 (`cache_read_input_token_cost: null`), so `cached_tokens` is an honest 0 on

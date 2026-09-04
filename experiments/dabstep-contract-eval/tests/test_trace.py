@@ -254,6 +254,53 @@ def test_reasoning_tokens_are_recorded_on_the_row():
     assert _reasoning_tokens(Usage()) == 42
 
 
+def test_reasoning_chars_recover_what_the_vllm_route_cannot_report():
+    """The `litellm_openai` route's provider reports no reasoning token count
+    at all -- measured, its whole usage block is three integers -- so
+    `reasoning_tokens` is 0 on every row of that model while it reasons and
+    bills at the output rate. `reasoning_chars` is the recoverable half, read
+    off the `ThinkingPart`s pydantic-ai builds from `reasoning_content`.
+
+    This asserts the two are INDEPENDENT: a run with no provider token count
+    must still record its reasoning volume, or the finding this column exists
+    to rescue is still uncomputable.
+    """
+    from dce.agent import _reasoning_chars, build_result_row
+
+    from tests.test_agent import ROW_KWARGS
+
+    class _Part:
+        def __init__(self, kind, content):
+            self.part_kind = kind
+            self.content = content
+
+    class _Msg:
+        def __init__(self, parts):
+            self.parts = parts
+
+    messages = [
+        _Msg([_Part("thinking", "abcde"), _Part("tool-call", "ignored")]),
+        _Msg([_Part("thinking", "fg")]),
+        # A part with no content at all must contribute nothing rather than
+        # raise -- the same defensive contract `_reasoning_tokens` keeps.
+        _Msg([_Part("thinking", None)]),
+        _Msg([]),
+    ]
+    assert _reasoning_chars(messages) == 7
+
+    # Only thinking parts count: a run that produced a long ANSWER and no
+    # reasoning must read 0, not "some text happened".
+    assert _reasoning_chars([_Msg([_Part("text", "a long answer" * 100)])]) == 0
+
+    # And the column survives onto the row independently of the token count,
+    # which is the whole point.
+    row = build_result_row(
+        **{**ROW_KWARGS, "reasoning_tokens": 0, "reasoning_chars": 22759}
+    )
+    assert row["reasoning_tokens"] == 0
+    assert row["reasoning_chars"] == 22759
+
+
 def test_reasoning_tokens_degrade_to_zero_rather_than_breaking_a_paid_row():
     """`details` is not a first-class pydantic-ai field, so a provider that
     omits it — or a rename in a future release — must cost 0, not a row."""

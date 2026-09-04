@@ -268,6 +268,54 @@ def _tool_call_names(messages: list) -> list[str]:
     return names
 
 
+#: Measured chars-per-reasoning-token for `qwen3.6-27b`, for converting the
+#: `reasoning_chars` column below into the token count this deployment will not
+#: report. From the one place that reports both: a streaming request with
+#: `stream_options.include_usage` returned 471 characters of
+#: `reasoning_content` against `completion_tokens_details.reasoning_tokens` of
+#: 173, i.e. 2.72. A SINGLE OBSERVATION on a short prompt -- enough to put a
+#: 4-10x ratio on the right scale, not enough to quote a token count as exact.
+QWEN_REASONING_CHARS_PER_TOKEN: float = 2.72
+
+
+def _reasoning_chars(messages: list) -> int:
+    """Total characters of reasoning a run produced, from its message history.
+
+    EXISTS BECAUSE ONE ROUTE CANNOT REPORT THE TOKEN COUNT AND THIS IS THE
+    RECOVERABLE HALF. `_reasoning_tokens` reads the provider's own count, and
+    for `litellm_openai` there is none: measured 2026-09-04, the non-streaming
+    response carries `reasoning_content` in full but a usage block of exactly
+    three integers, `/v1/messages` returns no reasoning at all, and
+    `stream_options` is rejected outright without `stream=True` ("Stream
+    options can only be defined when `stream=True`"). The count is available
+    ONLY on the streaming usage chunk, and switching this route to streaming to
+    get it would be trading a descriptive column for a risk to the experiment
+    itself -- the one documented qwen tool-call failure mode is specifically
+    the vLLM STREAMING tool-call parser degrading under large generations,
+    which is the failure the non-streaming smoke run just showed to be absent.
+
+    So the text is measured instead of the tokens. pydantic-ai maps
+    `reasoning_content` onto a `ThinkingPart`, so this is exact for characters
+    and costs nothing -- and `QWEN_REASONING_CHARS_PER_TOKEN` above converts it
+    when a token figure is wanted. This makes the "wrong answers involve 4-10x
+    more reasoning tokens than right ones" analysis computable for this model
+    from the results file, which was otherwise the one finding it would have
+    had to sit out.
+
+    Takes the raw message list for the same reason `_tool_call_names` does: a
+    run that raises never produces a result object, and cap trips are exactly
+    where reasoning volume matters most. Non-zero for any model whose reasoning
+    text comes back -- it is not qwen-specific, it is simply only load-bearing
+    where the token count is missing.
+    """
+    total = 0
+    for message in messages:
+        for part in getattr(message, "parts", []):
+            if getattr(part, "part_kind", "") == "thinking":
+                total += len(getattr(part, "content", "") or "")
+    return total
+
+
 FORCED_ANSWER_PROMPT = (
     "You have run out of tool calls. Do not attempt any further tool calls.\n"
     "Using only the evidence already gathered above, state your single best "
@@ -651,6 +699,7 @@ def build_result_row(
     forced_answer: bool,
     trace_path: str | None,
     reasoning_tokens: int,
+    reasoning_chars: int,
     in_tok: int,
     out_tok: int,
     cached_tok: int,
@@ -720,6 +769,10 @@ def build_result_row(
         # that is ~4.6 KB of the model's own reasoning per task — the single
         # most useful thing in a transcript for diagnosing a wrong answer.
         "reasoning_tokens": reasoning_tokens,
+        # The recoverable half of the same measurement, for the one route whose
+        # provider does not report `reasoning_tokens` at all. See
+        # `_reasoning_chars`.
+        "reasoning_chars": reasoning_chars,
         "input_tokens": in_tok,
         "output_tokens": out_tok,
         "cached_tokens": cached_tok,
@@ -941,6 +994,11 @@ def _priced_fallback_row(
         "quantization": _spec_field(model, "quantization"),
         "reasoning_effort": reasoning_effort_for(model),
         "reasoning_tokens": _reasoning_tokens(usage),
+        # Always 0 here, and honestly so: this row exists because the
+        # bookkeeping tail raised, and the message history it would be derived
+        # from is not in scope. Present so every row shape carries the same
+        # keys -- the same contract the fields around it keep.
+        "reasoning_chars": 0,
         "input_tokens": in_tok,
         "output_tokens": out_tok,
         "cached_tokens": getattr(usage, "cache_read_tokens", 0) or 0,
@@ -1607,6 +1665,7 @@ def run_task(
                 forced_answer=forced_answer,
                 trace_path=trace_path,
                 reasoning_tokens=_reasoning_tokens(usage),
+                reasoning_chars=_reasoning_chars(messages),
                 in_tok=usage.input_tokens,
                 out_tok=usage.output_tokens,
                 cached_tok=usage.cache_read_tokens,
