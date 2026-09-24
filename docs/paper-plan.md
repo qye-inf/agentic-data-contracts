@@ -306,6 +306,48 @@ the arm contrast and says so); the executable metric layer (deferred by
 design, see *What is distinctive here*); a second benchmark (none has
 DABStep's documentation-bound difficulty).
 
+## Panel revision: Qwen 3.8 replaces Qwen 3.6 (2026-09-24)
+
+**Recorded before any Qwen 3.8 run.** The k=3 gateway panel in
+[`paper/README.md`](paper/README.md) named Qwen 3.6 27B. It now names
+**Qwen 3.8 27B, k=3, all four arms, three fresh runs.** GPT-5.6 luna is
+dropped from the panel.
+
+**Why.** A four-arm, 401-task Qwen 3.6 sweep already exists
+(`results/qwen-full.jsonl`). It cannot be repeated on the stack that produced
+it. On 2026-09-04, the day before that sweep ran, the `qwen3.6-27b` alias
+fanned out across vLLM builds 0.22.1 and 0.26.0. On 2026-09-24, 20 of 20
+requests were served by a single 0.28.0 build, and the traces do not record
+which build served which request. A repeat today would mix sampling variance
+with a serving-stack change, which is the one thing the repeats exist to
+exclude. Since fresh runs are needed either way, the panel moves to the
+current model. `qwen3.8-27b` accepts `temperature=0` and `seed=0` (verified
+live), so both determinism controls are available.
+
+**What this is not.** Not a choice made on results: no Qwen 3.8 contract-arm
+row exists as this is written, and the 3.6 sweep's outcome plays no part in
+the reason above. Not a MotherDuck comparison: 3.8 is the model in
+`motherduck-local`, which is context, not the reason. The positioning section
+of this plan still applies, and the paper does not set the two numbers
+against each other.
+
+**Disclosure.** The Qwen 3.6 sweep ships with the artifacts. The paper's
+artifact section or appendix says in one line that it exists, that its
+serving stack was replaced before repeats could run, and that the panel
+therefore uses 3.8. It does not enter the main tables.
+
+**Consequences.**
+
+- The panel runs on one commit at `v0.53.0` or later, as `paper/README.md`
+  specifies. No existing row counts as a panel repeat. Run D and the Qwen 3.6
+  sweep are near-replicates, like run E.
+- Qwen's reasoning tokens are not reported by its route, so they are
+  estimated from reasoning text with a per-model ratio: 3.87 characters per
+  token for 3.8, measured 2026-09-24. The 3.6 value was corrected from 2.72
+  to 3.73 the same day; no reported figure had used the old one.
+- Open question for the gateway team: the deployment's quantization, which
+  it does not report. Ask before the paper names the checkpoint.
+
 ## The pro sweep: design
 
 ### Which model
