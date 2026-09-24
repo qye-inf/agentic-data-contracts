@@ -265,6 +265,34 @@ MODELS: dict[str, ModelSpec] = {
             role="open_weights_self_hosted",
             route="litellm_openai",
         ),
+        # Qwen3.8-27B, self-hosted on vLLM behind the same gateway and route as
+        # `qwen3.6-27b`, whose caveats all apply. It is the model MotherDuck's
+        # local-model report ran (`motherduck-local` in the paper's refs), so
+        # it is the candidate that would put their number and ours on the
+        # same model -- though they ran it at 4-bit, and this deployment's
+        # quantization is not reported.
+        #
+        # Prices are the gateway's own metering, read from `/model/info` on
+        # 2026-09-24, and identical to `qwen3.6-27b`'s: input $0.00, output
+        # $0.13205/MTok, no cache tier.
+        #
+        # `supports_temperature=True`, verified live the same day: HTTP 200
+        # on `temperature=0` with `seed=0`. The gateway lists two deployments
+        # for this alias; four consecutive requests all reported
+        # `system_fingerprint` `vllm-0.28.0-tp4-2a8529a2`, so the fan-out that
+        # `qwen3.6-27b` shows across builds was not observed here -- which
+        # four requests cannot rule out.
+        ModelSpec(
+            "qwen3.8-27b",
+            provider_tag="hosted_vllm/qwen3.8-27b",
+            quantization="unknown",
+            price_in=0.0,
+            price_out=0.13205,
+            price_cached=0.0,
+            supports_temperature=True,
+            role="open_weights_self_hosted",
+            route="litellm_openai",
+        ),
     )
 }
 

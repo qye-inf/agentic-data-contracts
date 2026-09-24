@@ -11,11 +11,12 @@ def test_every_model_is_a_pinned_snapshot():
         "openai/gpt-5.6-sol",
         "claudesonnet5",
         "qwen3.6-27b",
+        "qwen3.8-27b",
     }
 
 
 def test_only_openrouter_models_carry_an_openrouter_endpoint_pin():
-    """The two gateway models are not OpenRouter models, and the difference is
+    """The gateway models are not OpenRouter models, and the difference is
     not cosmetic: their `provider_tag` names the upstream the enterprise gateway
     resolves each alias to, and nothing sends that tag on the wire. The
     OpenRouter specs' `provider_tag` IS the pin, enforced per request; theirs
@@ -34,7 +35,7 @@ def test_only_openrouter_models_carry_an_openrouter_endpoint_pin():
         by_route.setdefault(spec.route, []).append(spec.id)
     assert set(by_route) == {"openrouter", "litellm_anthropic", "litellm_openai"}
     assert by_route["litellm_anthropic"] == ["claudesonnet5"]
-    assert by_route["litellm_openai"] == ["qwen3.6-27b"]
+    assert by_route["litellm_openai"] == ["qwen3.6-27b", "qwen3.8-27b"]
     assert len(by_route["openrouter"]) == 4
 
 
