@@ -301,6 +301,26 @@ def test_reasoning_chars_recover_what_the_vllm_route_cannot_report():
     assert row["reasoning_chars"] == 22759
 
 
+def test_every_unreported_reasoning_model_has_its_own_measured_ratio():
+    """`reasoning_chars` becomes a token figure only through a chars-per-token
+    ratio, and that ratio belongs to a tokenizer, not to a route. A single
+    constant measured on `qwen3.6-27b` would silently convert a second model's
+    characters with the first model's tokenizer -- so every model on the route
+    that cannot report reasoning tokens must carry its own entry, and adding
+    one without measuring it fails here.
+    """
+    from dce.agent import REASONING_CHARS_PER_TOKEN
+    from dce.pricing import MODELS
+
+    unreported = {m for m, spec in MODELS.items() if spec.route == "litellm_openai"}
+    assert set(REASONING_CHARS_PER_TOKEN) == unreported
+    for model, ratio in REASONING_CHARS_PER_TOKEN.items():
+        # English-and-SQL reasoning under a BPE tokenizer sits near 4 chars a
+        # token; a value far outside this band is a mismeasurement, which is
+        # how the first single-request value of 2.72 went unnoticed.
+        assert 3.0 < ratio < 5.0, model
+
+
 def test_reasoning_tokens_degrade_to_zero_rather_than_breaking_a_paid_row():
     """`details` is not a first-class pydantic-ai field, so a provider that
     omits it — or a rename in a future release — must cost 0, not a row."""

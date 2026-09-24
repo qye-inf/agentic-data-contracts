@@ -268,14 +268,24 @@ def _tool_call_names(messages: list) -> list[str]:
     return names
 
 
-#: Measured chars-per-reasoning-token for `qwen3.6-27b`, for converting the
-#: `reasoning_chars` column below into the token count this deployment will not
-#: report. From the one place that reports both: a streaming request with
-#: `stream_options.include_usage` returned 471 characters of
-#: `reasoning_content` against `completion_tokens_details.reasoning_tokens` of
-#: 173, i.e. 2.72. A SINGLE OBSERVATION on a short prompt -- enough to put a
-#: 4-10x ratio on the right scale, not enough to quote a token count as exact.
-QWEN_REASONING_CHARS_PER_TOKEN: float = 2.72
+#: Measured chars-per-reasoning-token, per model, for converting the
+#: `reasoning_chars` column below into the token count the `litellm_openai`
+#: route will not report. Keyed by model because the ratio belongs to a
+#: tokenizer, not a route. From the one place that reports both: streaming
+#: requests with `stream_options.include_usage`, which return
+#: `completion_tokens_details.reasoning_tokens` beside the `reasoning_content`
+#: text. Measured 2026-09-24 on four DABStep-style fee and fraud prompts at
+#: `temperature=0`, pooled: `qwen3.6-27b` 3.73 over 18,457 tokens (per prompt
+#: 3.65-3.84), `qwen3.8-27b` 3.87 over 5,352 tokens (3.76-4.02).
+#:
+#: The first value for `qwen3.6-27b`, 2.72, came from a single short request
+#: and was 27% low: it would have overstated this model's reasoning tokens by
+#: 37%. No reported figure used it. The tokenizer does not depend on the vLLM
+#: build, so the new value holds for the sweep run on the older replicas too.
+REASONING_CHARS_PER_TOKEN: dict[str, float] = {
+    "qwen3.6-27b": 3.73,
+    "qwen3.8-27b": 3.87,
+}
 
 
 def _reasoning_chars(messages: list) -> int:
@@ -296,7 +306,7 @@ def _reasoning_chars(messages: list) -> int:
 
     So the text is measured instead of the tokens. pydantic-ai maps
     `reasoning_content` onto a `ThinkingPart`, so this is exact for characters
-    and costs nothing -- and `QWEN_REASONING_CHARS_PER_TOKEN` above converts it
+    and costs nothing -- and `REASONING_CHARS_PER_TOKEN` above converts it
     when a token figure is wanted. This makes the "wrong answers involve 4-10x
     more reasoning tokens than right ones" analysis computable for this model
     from the results file, which was otherwise the one finding it would have

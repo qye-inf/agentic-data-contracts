@@ -176,14 +176,15 @@ descriptive column for a risk to the experiment itself is the wrong trade.
 So the harness measures the text instead. pydantic-ai maps `reasoning_content`
 onto a `ThinkingPart`, and every row now carries **`reasoning_chars`** — exact,
 free, and independent of whether the provider reports a token count. The
-measured conversion is **2.72 characters per reasoning token**
-(`QWEN_REASONING_CHARS_PER_TOKEN`), from the single request that reported both;
-enough to put a ratio on the right scale, not enough to quote a token count as
-exact. The "wrong answers involve 4–10x more reasoning tokens than right ones"
+conversion is measured per model, since it belongs to the tokenizer
+(`REASONING_CHARS_PER_TOKEN`): **3.73 characters per reasoning token** for
+`qwen3.6-27b` and **3.87** for `qwen3.8-27b`, pooled over four streaming
+requests each on DABStep-style prompts. An earlier single-request value of
+2.72 was 27% low. The "wrong answers involve 4–10x more reasoning tokens than right ones"
 finding is therefore computable for this model after all.
 
 For scale: one 41-turn smoke run produced 22,759 characters of reasoning —
-~8,400 tokens, roughly 57% of that run's 14,708 output tokens, all of it billed
+~6,100 tokens, roughly 41% of that run's 14,708 output tokens, all of it billed
 and all of it previously invisible.
 
 **Input is metered at $0.00/MTok** and there is no cache tier at all
