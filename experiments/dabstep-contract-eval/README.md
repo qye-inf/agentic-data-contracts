@@ -157,6 +157,16 @@ this model reasons like the other five. The known risk is qwen-specific and is
 settled by the smoke run rather than by argument: Qwen3 has a documented
 failure mode where tool calls are dropped in thinking mode (QwenLM/Qwen3#1817).
 
+**`reasoning_tokens` is 0 on every row of this model, and that is the
+provider's silence rather than ours.** vLLM returns no reasoning breakdown at
+all — measured on a request with thinking on that produced visible reasoning,
+the whole usage block was `{"completion_tokens": 400, "prompt_tokens": 23,
+"total_tokens": 423}`. The reasoning itself is not lost: it comes back in
+`reasoning_content`, which pydantic-ai maps to a `ThinkingPart`, so the traces
+carry it. What is lost is the cheap count — so the "wrong answers involve 4–10x
+more reasoning tokens than right ones" finding cannot be computed for this
+model from the results file alone.
+
 **Input is metered at $0.00/MTok** and there is no cache tier at all
 (`cache_read_input_token_cost: null`), so `cached_tokens` is an honest 0 on
 every row and the caching confound that forced `claudesonnet5` onto the

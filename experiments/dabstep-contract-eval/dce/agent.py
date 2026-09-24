@@ -791,6 +791,24 @@ class AgentConstructionError(RuntimeError):
 #: and bills for it at the output rate. Measured on `claudesonnet5` through the
 #: gateway with this module's own factory: 645 thinking tokens on a single
 #: three-request run, recorded as 0 before this fix.
+#:
+#: A THIRD CASE EXISTS AND NO KEY CAN FIX IT. The `litellm_openai` route's vLLM
+#: deployment reports NO reasoning breakdown whatsoever -- measured 2026-09-04
+#: on a request with thinking on that produced visible reasoning, the entire
+#: usage block was `{"completion_tokens": 400, "prompt_tokens": 23,
+#: "total_tokens": 423}`, with no `completion_tokens_details` at all. So
+#: `qwen3.6-27b` rows carry `reasoning_tokens: 0` while the model reasons and
+#: bills for it at the output rate -- the same misleading column the Anthropic
+#: fix above removed, except here it is the provider that does not report,
+#: not this function that failed to read.
+#:
+#: The reasoning itself is NOT lost: vLLM returns it in `reasoning_content`,
+#: which pydantic-ai maps to a `ThinkingPart`, so `dce/trace.py` still captures
+#: it and the token count can be recovered from the trace if it is ever needed.
+#: What is lost is the CHEAP count, and with it one of this experiment's own
+#: findings for this model: "wrong answers involve 4-10x more reasoning tokens
+#: than right ones" cannot be computed for `qwen3.6-27b` from the results file
+#: alone. Recorded here rather than discovered during analysis.
 _REASONING_TOKEN_KEYS: tuple[str, ...] = ("reasoning_tokens", "thinking_tokens")
 
 
@@ -1113,9 +1131,7 @@ def _litellm_anthropic_agent(
 QWEN_ENABLE_THINKING: bool = True
 
 
-def _litellm_openai_agent(
-    *, model: str, system_prompt: str, tools: list, retries: int
-):
+def _litellm_openai_agent(*, model: str, system_prompt: str, tools: list, retries: int):
     """Build the agent for a `route="litellm_openai"` model.
 
     A THIRD ROUTE, AND THE ONE WITH THE FEWEST GUARANTEES. This is the same
@@ -1210,9 +1226,7 @@ def _litellm_openai_agent(
                 # rather than an effort scale -- see `QWEN_ENABLE_THINKING`,
                 # which also records why this is sent explicitly instead of
                 # being left to the gateway's own pin.
-                "chat_template_kwargs": {
-                    "enable_thinking": QWEN_ENABLE_THINKING
-                },
+                "chat_template_kwargs": {"enable_thinking": QWEN_ENABLE_THINKING},
             },
         ),
     )
