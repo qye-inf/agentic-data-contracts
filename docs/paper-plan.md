@@ -365,6 +365,14 @@ therefore uses 3.8. It does not enter the main tables.
   accuracy (timeouts excluded) and STRICT accuracy (timeouts counted wrong).
   Because the weaker arms time out more, STRICT widens the contract arm's
   lead slightly, so SCORED is the conservative headline.
+- No SQL time limit: neither the harness nor the library bounds query run
+  time (the library's `max_query_time_seconds` is declared but unenforced,
+  upstream issue #114). In repeat 1's retry pass one model-written query ran
+  for over 35 minutes and the job was deleted by hand; the two runs it held
+  (task 2711, contract and hollow) keep their first-pass timeout rows. Each
+  repeat is checked for hung workers near its end, and the harness limit is
+  added only after the panel, so all three repeats run the same code.
+  Repeat 1 final, after retries: 9 harness failures left in 1,604 runs.
 - Answer format and the end-to-end score: Qwen 3.8 often states its working
   and then the exact answer as its last paragraph, against a prompt that asks
   for the answer alone. DABStep's scorer grades the whole message and marks
