@@ -269,8 +269,11 @@ MODELS: dict[str, ModelSpec] = {
         # `qwen3.6-27b`, whose caveats all apply. It is the model MotherDuck's
         # local-model report ran (`motherduck-local` in the paper's refs), so
         # it is the candidate that would put their number and ours on the
-        # same model -- though they ran it at 4-bit, and this deployment's
-        # quantization is not reported.
+        # same model -- though they ran it at 4-bit, and this deployment is
+        # FP8. The gateway's API does not report quantization; FP8 was
+        # confirmed out of band on 2026-09-25, after the panel commit was
+        # fixed, so the field below stays "unknown" to match what every panel
+        # row records.
         #
         # Prices are the gateway's own metering, read from `/model/info` on
         # 2026-09-24, and identical to `qwen3.6-27b`'s: input $0.00, output
@@ -278,10 +281,10 @@ MODELS: dict[str, ModelSpec] = {
         #
         # `supports_temperature=True`, verified live the same day: HTTP 200
         # on `temperature=0` with `seed=0`. The gateway lists two deployments
-        # for this alias; four consecutive requests all reported
-        # `system_fingerprint` `vllm-0.28.0-tp4-2a8529a2`, so the fan-out that
-        # `qwen3.6-27b` shows across builds was not observed here -- which
-        # four requests cannot rule out.
+        # for this alias, both on H100 GPUs; four consecutive requests all
+        # reported `system_fingerprint` `vllm-0.28.0-tp4-2a8529a2`, so the
+        # fan-out that `qwen3.6-27b` shows across builds was not observed
+        # here -- which four requests cannot rule out.
         ModelSpec(
             "qwen3.8-27b",
             provider_tag="hosted_vllm/qwen3.8-27b",

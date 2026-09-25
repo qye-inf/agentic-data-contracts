@@ -123,7 +123,7 @@ and `contract_hollow` arms, which carry the claim it replicates.
    disclosed (see Paper 2 in `../paper-plan.md`).
 2. **Public model ids.** EA&B requires "all experimental data and related
    software must be available". Confirm the gateway serves Qwen 3.8 27B
-   as the public checkpoint (its quantization is not reported; ask), and
+   as the public checkpoint (it is served at FP8, confirmed 2026-09-25), and
    name every model by its public id. Each
    needs an entry in `dce/pricing.py`, which rejects any id it does not list,
    and `--max-spend` is required even when the gateway bills the company.

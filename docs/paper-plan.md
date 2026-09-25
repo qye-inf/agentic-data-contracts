@@ -345,8 +345,15 @@ therefore uses 3.8. It does not enter the main tables.
   estimated from reasoning text with a per-model ratio: 3.87 characters per
   token for 3.8, measured 2026-09-24. The 3.6 value was corrected from 2.72
   to 3.73 the same day; no reported figure had used the old one.
-- Open question for the gateway team: the deployment's quantization, which
-  it does not report. Ask before the paper names the checkpoint.
+- Quantization: the Qwen 3.8 deployment is FP8, confirmed 2026-09-25; the
+  gateway's API does not report it. Panel rows record `quantization` as
+  `unknown` because the panel commit predates the confirmation, so the paper
+  states FP8 from this note, not from the rows. MotherDuck ran the same model
+  at 4-bit, so the two numbers differ in quantization as well as harness.
+- Deployment: the gateway serves the Qwen 3.8 alias from two vLLM
+  deployments, both on H100 GPUs, and requests sampled on 2026-09-24 all
+  reported the same build (`vllm-0.28.0-tp4`). Hardware is therefore
+  constant across the panel's Qwen rows.
 
 ## The pro sweep: design
 
