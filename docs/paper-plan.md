@@ -341,10 +341,12 @@ therefore uses 3.8. It does not enter the main tables.
 - The panel runs on one commit at `v0.53.0` or later, as `paper/README.md`
   specifies. No existing row counts as a panel repeat. Run D and the Qwen 3.6
   sweep are near-replicates, like run E.
-- Qwen's reasoning tokens are not reported by its route, so they are
-  estimated from reasoning text with a per-model ratio: 3.87 characters per
-  token for 3.8, measured 2026-09-24. The 3.6 value was corrected from 2.72
-  to 3.73 the same day; no reported figure had used the old one.
+- Reasoning tokens: Qwen 3.8's deployment reports them, on every panel row,
+  so the paper uses its own counts. Qwen 3.6's deployment did not, so its
+  figures are estimated from reasoning text at 3.73 characters per token
+  (corrected from 2.72 on 2026-09-24; no reported figure had used the old
+  value). The same method gave 3.87 for 3.8 beforehand, and 3.8's reported
+  counts over repeat 1 give 4.00, so the estimate is within 3%.
 - Quantization: the Qwen 3.8 deployment is FP8, confirmed 2026-09-25; the
   gateway's API does not report it. Panel rows record `quantization` as
   `unknown` because the panel commit predates the confirmation, so the paper

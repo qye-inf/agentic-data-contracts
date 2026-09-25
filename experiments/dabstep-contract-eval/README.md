@@ -157,10 +157,14 @@ this model reasons like the other five. The known risk is qwen-specific and is
 settled by the smoke run rather than by argument: Qwen3 has a documented
 failure mode where tool calls are dropped in thinking mode (QwenLM/Qwen3#1817).
 
-**`reasoning_tokens` is 0 on every row of this model, and `reasoning_chars`
-is why that is not the end of the story.** The non-streaming response carries
-`reasoning_content` in full but a usage block of exactly three integers, so
-there is no provider token count to read. Three other routes were tried and
+**Whether `reasoning_tokens` is reported depends on the deployment, not the
+route, and `reasoning_chars` covers the case where it is not.** For
+`qwen3.6-27b` it is 0 on every row: that deployment's non-streaming response
+carries `reasoning_content` in full but a usage block of exactly three
+integers, so there is no provider token count to read. `qwen3.8-27b`'s
+deployment (`vllm-0.28.0`) does report it, on every panel row, so for that
+model the column is the provider's own count. The rest of this section
+describes the `qwen3.6-27b` case. Three other routes were tried and
 none help: `/v1/messages` returns no reasoning at all, `stream_options` is
 rejected outright without `stream=True` (*"Stream options can only be defined
 when `stream=True`"*), and the count appears **only** on the streaming usage
@@ -181,7 +185,10 @@ conversion is measured per model, since it belongs to the tokenizer
 `qwen3.6-27b` and **3.87** for `qwen3.8-27b`, pooled over four streaming
 requests each on DABStep-style prompts. An earlier single-request value of
 2.72 was 27% low. The "wrong answers involve 4–10x more reasoning tokens than right ones"
-finding is therefore computable for this model after all.
+finding is therefore computable for this model after all. The `qwen3.8-27b`
+ratio has since been checked against that model's reported counts: panel
+repeat 1 recorded 13.4M reasoning tokens for 53.5M characters, 4.00
+characters per token, within 3% of the 3.87 measured beforehand.
 
 For scale: one 41-turn smoke run produced 22,759 characters of reasoning —
 ~6,100 tokens, roughly 41% of that run's 14,708 output tokens, all of it billed

@@ -254,11 +254,12 @@ def test_reasoning_tokens_are_recorded_on_the_row():
     assert _reasoning_tokens(Usage()) == 42
 
 
-def test_reasoning_chars_recover_what_the_vllm_route_cannot_report():
-    """The `litellm_openai` route's provider reports no reasoning token count
-    at all -- measured, its whole usage block is three integers -- so
+def test_reasoning_chars_recover_what_a_deployment_cannot_report():
+    """`qwen3.6-27b`'s deployment reports no reasoning token count at all --
+    measured, its whole usage block is three integers -- so
     `reasoning_tokens` is 0 on every row of that model while it reasons and
-    bills at the output rate. `reasoning_chars` is the recoverable half, read
+    bills at the output rate. (`qwen3.8-27b`, a newer build on the same route,
+    does report it.) `reasoning_chars` is the recoverable half, read
     off the `ThinkingPart`s pydantic-ai builds from `reasoning_content`.
 
     This asserts the two are INDEPENDENT: a run with no provider token count
@@ -301,13 +302,18 @@ def test_reasoning_chars_recover_what_the_vllm_route_cannot_report():
     assert row["reasoning_chars"] == 22759
 
 
-def test_every_unreported_reasoning_model_has_its_own_measured_ratio():
+def test_every_self_hosted_reasoning_model_has_its_own_measured_ratio():
     """`reasoning_chars` becomes a token figure only through a chars-per-token
     ratio, and that ratio belongs to a tokenizer, not to a route. A single
     constant measured on `qwen3.6-27b` would silently convert a second model's
-    characters with the first model's tokenizer -- so every model on the route
-    that cannot report reasoning tokens must carry its own entry, and adding
-    one without measuring it fails here.
+    characters with the first model's tokenizer -- so every model on the
+    self-hosted route must carry its own entry, and adding one without
+    measuring it fails here.
+
+    Required for the whole route, not only for models whose deployment omits
+    the count: whether a deployment reports it is a property of its serving
+    build (`qwen3.6-27b` does not, `qwen3.8-27b` does) and can change under
+    the same alias, so the fallback must already exist when it does.
     """
     from dce.agent import REASONING_CHARS_PER_TOKEN
     from dce.pricing import MODELS

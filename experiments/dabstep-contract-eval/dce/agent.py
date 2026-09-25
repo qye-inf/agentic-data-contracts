@@ -269,14 +269,18 @@ def _tool_call_names(messages: list) -> list[str]:
 
 
 #: Measured chars-per-reasoning-token, per model, for converting the
-#: `reasoning_chars` column below into the token count the `litellm_openai`
-#: route will not report. Keyed by model because the ratio belongs to a
-#: tokenizer, not a route. From the one place that reports both: streaming
-#: requests with `stream_options.include_usage`, which return
+#: `reasoning_chars` column below into a token count where the deployment
+#: does not report one (`qwen3.6-27b`; `qwen3.8-27b`'s deployment does, so its
+#: entry is a cross-check rather than a necessity). Keyed by model because the
+#: ratio belongs to a tokenizer, not a route. Measured where `qwen3.6-27b`'s
+#: deployment reports both: streaming requests with
+#: `stream_options.include_usage`, which return
 #: `completion_tokens_details.reasoning_tokens` beside the `reasoning_content`
 #: text. Measured 2026-09-24 on four DABStep-style fee and fraud prompts at
 #: `temperature=0`, pooled: `qwen3.6-27b` 3.73 over 18,457 tokens (per prompt
-#: 3.65-3.84), `qwen3.8-27b` 3.87 over 5,352 tokens (3.76-4.02).
+#: 3.65-3.84), `qwen3.8-27b` 3.87 over 5,352 tokens (3.76-4.02). The
+#: `qwen3.8-27b` value was later confirmed by that model's own reported counts
+#: over panel repeat 1: 4.00 over 13.4M tokens.
 #:
 #: The first value for `qwen3.6-27b`, 2.72, came from a single short request
 #: and was 27% low: it would have overstated this model's reasoning tokens by
@@ -291,9 +295,10 @@ REASONING_CHARS_PER_TOKEN: dict[str, float] = {
 def _reasoning_chars(messages: list) -> int:
     """Total characters of reasoning a run produced, from its message history.
 
-    EXISTS BECAUSE ONE ROUTE CANNOT REPORT THE TOKEN COUNT AND THIS IS THE
+    EXISTS BECAUSE ONE DEPLOYMENT CANNOT REPORT THE TOKEN COUNT AND THIS IS THE
     RECOVERABLE HALF. `_reasoning_tokens` reads the provider's own count, and
-    for `litellm_openai` there is none: measured 2026-09-04, the non-streaming
+    for `qwen3.6-27b` there is none (`qwen3.8-27b`'s deployment, a newer vLLM
+    build on the same route, does report it): measured 2026-09-04, the non-streaming
     response carries `reasoning_content` in full but a usage block of exactly
     three integers, `/v1/messages` returns no reasoning at all, and
     `stream_options` is rejected outright without `stream=True` ("Stream
@@ -779,8 +784,8 @@ def build_result_row(
         # that is ~4.6 KB of the model's own reasoning per task — the single
         # most useful thing in a transcript for diagnosing a wrong answer.
         "reasoning_tokens": reasoning_tokens,
-        # The recoverable half of the same measurement, for the one route whose
-        # provider does not report `reasoning_tokens` at all. See
+        # The recoverable half of the same measurement, for a deployment that
+        # does not report `reasoning_tokens` at all (`qwen3.6-27b`). See
         # `_reasoning_chars`.
         "reasoning_chars": reasoning_chars,
         "input_tokens": in_tok,
@@ -872,6 +877,10 @@ class AgentConstructionError(RuntimeError):
 #: findings for this model: "wrong answers involve 4-10x more reasoning tokens
 #: than right ones" cannot be computed for `qwen3.6-27b` from the results file
 #: alone. Recorded here rather than discovered during analysis.
+#:
+#: This is a property of that deployment, not of the route: `qwen3.8-27b`,
+#: served by a newer vLLM build behind the same gateway route, reports
+#: `reasoning_tokens` on every panel row.
 _REASONING_TOKEN_KEYS: tuple[str, ...] = ("reasoning_tokens", "thinking_tokens")
 
 
