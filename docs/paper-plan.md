@@ -354,6 +354,29 @@ therefore uses 3.8. It does not enter the main tables.
   deployments, both on H100 GPUs, and requests sampled on 2026-09-24 all
   reported the same build (`vllm-0.28.0-tp4`). Hardware is therefore
   constant across the panel's Qwen rows.
+- Timeouts: each model request has a 300 s timeout, and at ~36 tok/s any
+  single Qwen 3.8 turn longer than ~11k tokens hits it. Repeat 1's first
+  pass ended 38 of 1,604 runs (2.4%) with `error: Request timed out`, unevenly
+  across arms (hollow 15, schema-only 10, manual 9, contract 4); the Qwen 3.6
+  sweep had 36 (hollow 19, schema-only 16, manual 0, contract 1). Changing
+  the timeout would change the panel commit, so it stays. Each repeat
+  instead gets one `--retry error` pass on the same commit, and the paper
+  reports the per-arm timeout rate that remains alongside both SCORED
+  accuracy (timeouts excluded) and STRICT accuracy (timeouts counted wrong).
+  Because the weaker arms time out more, STRICT widens the contract arm's
+  lead slightly, so SCORED is the conservative headline.
+- Answer format and the end-to-end score: Qwen 3.8 often states its working
+  and then the exact answer as its last paragraph, against a prompt that asks
+  for the answer alone. DABStep's scorer grades the whole message and marks
+  those wrong, which read as 3.8 scoring far below 3.6 (contract 48.6% vs
+  76.5%). The paper cares whether the business question was answered, so
+  `dce.stats` also reports an END-TO-END (e2e) view: the official scorer
+  applied to the final paragraph of a multi-paragraph answer, upgrading and
+  never downgrading. Both are reported; e2e is the one the argument rests on.
+  Repeat 1 before retries, e2e scored: contract 67.0%, manual 49.9%, hollow
+  30.8%, schema-only 28.5%; it moves Qwen 3.6 by at most one point. The prompt
+  is not changed mid-panel. An independent judge audit of the rows the two
+  views disagree on is planned separately.
 
 ## The pro sweep: design
 
